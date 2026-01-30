@@ -11,16 +11,18 @@ from pdf_export import generate_pdf
 if "paid" not in st.session_state:
     st.session_state.paid = False
 
+# Check URL query param on load/redirect
 query_params = st.query_params
-
-# Check both state AND query param (in case of reload)
-if query_params.get("paid", [None])[0] == "true":
+if "paid" in query_params and query_params["paid"][0] == "true":
     st.session_state.paid = True
 
+# Optional: If paid, add the param back on reload/bookmark (for persistence)
+if st.session_state.paid and "paid" not in query_params:
+    st.query_params["paid"] = "true"
+    
 # If not paid via state or param → show paywall
 if not st.session_state.paid:
     st.title("🔒 OBBB 2025 Calculator")
-
     st.write("""
     This tool is available after a one-time payment.
     
