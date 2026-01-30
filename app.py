@@ -13,6 +13,12 @@ if "paid" not in st.session_state:
 
 # Check URL query param on load/redirect
 query_params = st.query_params
+
+# ─── DEBUG LINES ───
+st.write("DEBUG: Raw query params:", query_params)
+st.write("DEBUG: Paid state before check:", st.session_state.paid)
+st.write("DEBUG: Is 'paid' in params?", "paid" in query_params)
+
 if "paid" in query_params and query_params["paid"][0] == "true":
     st.session_state.paid = True
     # Clean URL after setting state (hides ?paid=true)
