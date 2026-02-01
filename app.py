@@ -16,15 +16,23 @@ st.set_page_config(
 )
 
 # =========================
-# SEGURIDAD: TOKEN REQUERIDO
+# SEGURIDAD: TOKEN (SE OCULTA DE LA URL)
 # =========================
 query_params = st.query_params
-token = query_params.get("token")
 
-if not token:
-    st.error("Acceso no autorizado. Debes completar el pago.")
-    st.stop()
+if "token" not in st.session_state:
+    token = query_params.get("token")
+    if not token:
+        st.error("Acceso no autorizado. Debes completar el pago.")
+        st.stop()
 
+    # Guardar token solo en sesión
+    st.session_state.token = token
+
+    # Limpiar URL (bloquea copia del link)
+    st.query_params.clear()
+
+# Flag de consumo
 if "used" not in st.session_state:
     st.session_state.used = False
 
@@ -107,14 +115,41 @@ if uploaded_files:
 st.markdown("---")
 st.subheader(t["income_label"])
 
-magi = st.number_input(t["magi_label"], min_value=0.0, value=extracted_magi, step=1000.0)
-filing_status = st.selectbox(t["filing_status_label"], t["filing_options"])
-tips_amount = st.number_input(t["tips_label"], min_value=0.0, value=extracted_tips, step=100.0)
-ot_total = st.number_input(t["ot_label"], min_value=0.0, value=extracted_ot, step=100.0)
-ot_multiplier = st.number_input(t["multiplier_label"], min_value=1.0, value=1.5, step=0.5)
+magi = st.number_input(
+    t["magi_label"],
+    min_value=0.0,
+    value=extracted_magi,
+    step=1000.0
+)
+
+filing_status = st.selectbox(
+    t["filing_status_label"],
+    t["filing_options"]
+)
+
+tips_amount = st.number_input(
+    t["tips_label"],
+    min_value=0.0,
+    value=extracted_tips,
+    step=100.0
+)
+
+ot_total = st.number_input(
+    t["ot_label"],
+    min_value=0.0,
+    value=extracted_ot,
+    step=100.0
+)
+
+ot_multiplier = st.number_input(
+    t["multiplier_label"],
+    min_value=1.0,
+    value=1.5,
+    step=0.5
+)
 
 # -------------------------
-# CALCULATION (CONSUME TOKEN AQUÍ)
+# CALCULATION (TOKEN SE CONSUME AQUÍ)
 # -------------------------
 st.markdown("---")
 
@@ -124,10 +159,14 @@ if st.button(t["calc_button"], type="primary"):
         st.warning("Este cálculo ya fue utilizado.")
         st.stop()
 
-    # 🔥 Validar + consumir token (1 solo uso)
+    # Validar y CONSUMIR token
     try:
-        r = requests.get(WORKER_VALIDATE_URL, params={"token": token}, timeout=5)
-    except:
+        r = requests.get(
+            WORKER_VALIDATE_URL,
+            params={"token": st.session_state.token},
+            timeout=5
+        )
+    except Exception:
         st.error("Error de conexión con el sistema de validación.")
         st.stop()
 
@@ -137,9 +176,7 @@ if st.button(t["calc_button"], type="primary"):
 
     st.session_state.used = True
 
-    # -------------------------
-    # LÓGICA
-    # -------------------------
+    # ===== LÓGICA OBBB =====
     ot_premium = calculate_ot_premium(ot_total, ot_multiplier)
 
     if filing_status == t["filing_options"][1]:
@@ -151,9 +188,7 @@ if st.button(t["calc_button"], type="primary"):
     ot_ded = min(ot_premium, apply_phaseout(magi, max_ot, phase_start))
     total = tips_ded + ot_ded
 
-    # -------------------------
-    # RESULTADOS
-    # -------------------------
+    # ===== RESULTADOS =====
     st.subheader(t["results_title"])
     st.success(f"{t['total_ded']} ${total:,.0f}")
     st.metric(t["tips_ded"], f"${tips_ded:,.0f}")
