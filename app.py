@@ -10,16 +10,11 @@ from st_paywall import add_auth
 # PAYWALL GATE (HARD BLOCK)
 # -------------------------
 add_auth(
-    stripe_publishable_key=st.secrets["stripe"]["publishable_key"],
-    stripe_secret_key=st.secrets["stripe"]["secret_key"],
-    stripe_price_id=st.secrets["stripe"]["monthly_price_id"],        
-    google_client_id=st.secrets["google"]["client_id"],
-    google_client_secret=st.secrets["google"]["client_secret"],
-    recurring=True,
-    price=4.99,
-    currency="usd",
-    button_text="Subscribe Monthly",
-    description="Unlimited calculator access"
+    required=True,  # Stops the app if not subscribed
+    show_redirect_button=True,
+    button_color="#5744EC",  # Optional: customize color
+    use_sidebar=True,  # Optional: show in sidebar
+    subscription_button_text="Subscribe Monthly ($5/mo)"  # Optional: custom text
 )
 
 # If here → user is logged in AND subscribed → show the app
