@@ -1,30 +1,52 @@
-﻿import streamlit as st
+import streamlit as st
+import requests
 from datetime import datetime
 from pandas import to_datetime
 from logic import calculate_ot_premium, apply_phaseout
 from pdf_utils import extract_amounts
 from pdf_export import generate_pdf
-from st_paywall import add_auth
 
-# -------------------------
-# PAYWALL GATE (HARD BLOCK)
-# -------------------------
-add_auth(
-    required=True,  # Stops the app if not subscribed
-    show_redirect_button=True,
-    button_color="#5744EC",  # Optional: customize color
-    use_sidebar=True,  # Optional: show in sidebar
-    subscription_button_text="Subscribe Monthly ($5/mo)"  # Optional: custom text
-)
 
-# If here → user is logged in AND subscribed → show the app
-# -------------------------
-# PAGE CONFIG
-# -------------------------
+WORKER_VALIDATE_URL = "https://obbb-tax-calculator.workers.dev/validate-token"
+
+def validate_token(token):
+    try:
+        r = requests.get(
+            WORKER_VALIDATE_URL,
+            params={"token": token},
+            timeout=5
+        )
+        return r.status_code == 200
+    except:
+        return False
+
+# ---------------------------
+# VALIDACIÓN INICIAL
+# ---------------------------
+query_params = st.query_params
+token = query_params.get("token")
+
+if not token:
+    st.error("Acceso no autorizado.")
+    st.stop()
+
+if "authorized" not in st.session_state:
+    if validate_token(token):
+        st.session_state.authorized = True
+        st.success("Pago confirmado ✅ Puedes realizar 1 cálculo.")
+    else:
+        st.error("Token inválido o ya usado.")
+        st.stop()
+
+
+
+
 st.set_page_config(
     page_title="OBBB 2025 Calculator",
     layout="centered"
 )
+# Update version tracker
+update_version_date = datetime.now().strftime('%Y-%m-%d')
 
 # Textos in spanish and english
 texts = {
@@ -218,18 +240,20 @@ if st.button(t["calc_button"], type="primary"):
     tips_ded,
     ot_ded
 )
+    
+if st.session_state.get("authorized"):
 
     st.download_button(
         label="📄 Download PDF report",
         data=pdf_bytes,
         file_name="obbb_deduction_report.pdf",
         mime="application/pdf"
-)
+    )
+
+    st.session_state.authorized = False
+    st.info("Cálculo consumido. Para otro cálculo debes pagar nuevamente.")
 # -------------------------
 # FOOTER
 # -------------------------
 st.markdown("---")
-
-# Update version tracker
-update_version_date = datetime.now().strftime('%Y-%m-%d')
 st.caption(f"{t['footer']} • {update_version_date}")
