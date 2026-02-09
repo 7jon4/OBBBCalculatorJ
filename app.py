@@ -8,7 +8,8 @@ from pdf_export import generate_pdf
 # =========================
 # CONFIG
 # =========================
-WORKER_VALIDATE_URL = "https://obbb-tax-calculator.joncamacaro.workers.dev/validate"
+WORKER_VALIDATE_URL = "https://obbb-tax-calculator.joncamacaro.workers.dev/validate-token"
+WORKER_CONSUME_URL = "https://obbb-tax-calculator.joncamacaro.workers.dev/consume-token"
 
 st.set_page_config(
     page_title="OBBB 2025 Calculator",
@@ -16,25 +17,37 @@ st.set_page_config(
 )
 
 # =========================
-# SEGURIDAD: TOKEN (SE OCULTA DE LA URL)
+# SEGURIDAD: TOKEN (1 VEZ)
 # =========================
 query_params = st.query_params
 
 if "token" not in st.session_state:
     token = query_params.get("token")
     if not token:
-        st.error("Acceso no autorizado. Debes completar el pago.")
+        st.error("❌ Acceso no autorizado. Debes completar el pago.")
         st.stop()
 
-    # Guardar token solo en sesión
+    # Validar token al entrar
+    try:
+        r = requests.get(
+            WORKER_VALIDATE_URL,
+            params={"token": token},
+            timeout=5
+        )
+    except Exception:
+        st.error("Error de conexión con el sistema de validación.")
+        st.stop()
+
+    if r.status_code != 200:
+        st.error("❌ Token inválido o ya utilizado.")
+        st.stop()
+
+    # Guardar token en sesión
     st.session_state.token = token
-
-    # Limpiar URL (bloquea copia del link)
-    st.query_params.clear()
-
-# Flag de consumo
-if "used" not in st.session_state:
     st.session_state.used = False
+
+    # Limpiar URL (anti copia)
+    st.query_params.clear()
 
 # =========================
 # TEXTOS
@@ -149,29 +162,29 @@ ot_multiplier = st.number_input(
 )
 
 # -------------------------
-# CALCULATION (TOKEN SE CONSUME AQUÍ)
+# CALCULATION (SE CONSUME AQUÍ)
 # -------------------------
 st.markdown("---")
 
 if st.button(t["calc_button"], type="primary"):
 
     if st.session_state.used:
-        st.warning("Este cálculo ya fue utilizado.")
+        st.warning("⚠️ Este cálculo ya fue utilizado.")
         st.stop()
 
-    # Validar y CONSUMIR token
+    # Consumir token
     try:
-        r = requests.get(
-            WORKER_VALIDATE_URL,
-            params={"token": st.session_state.token},
+        r = requests.post(
+            WORKER_CONSUME_URL,
+            json={"token": st.session_state.token},
             timeout=5
         )
     except Exception:
-        st.error("Error de conexión con el sistema de validación.")
+        st.error("Error de conexión con el sistema de consumo.")
         st.stop()
 
     if r.status_code != 200:
-        st.error("Token inválido o ya utilizado.")
+        st.error("❌ Token inválido o ya utilizado.")
         st.stop()
 
     st.session_state.used = True
