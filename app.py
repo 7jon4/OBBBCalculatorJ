@@ -10,6 +10,9 @@ st.set_page_config(page_title="OBBB Tax Calculator", layout="centered")
 query_params = st.query_params
 token = query_params.get("token")
 
+# =============================
+# VALIDACIÓN INICIAL
+# =============================
 if "access_granted" not in st.session_state:
 
     if not token:
@@ -25,30 +28,41 @@ if "access_granted" not in st.session_state:
     st.session_state.access_granted = True
     st.session_state.token = token
     st.session_state.used = False
+    st.session_state.confirmed = False
     st.query_params.clear()
 
-st.title("OBBB Tax Calculator")
+# =============================
+# BLOQUEAR SI YA FUE USADO
+# =============================
+if st.session_state.used:
+    st.error("Este acceso ya fue utilizado y no puede volver a usarse.")
+    st.stop()
 
+# =============================
+# INTERFAZ
+# =============================
+st.title("OBBB Tax Calculator")
 st.subheader("Ingrese sus datos")
 
 income = st.number_input("Ingreso anual", min_value=0.0, value=0.0)
 expenses = st.number_input("Gastos anuales", min_value=0.0, value=0.0)
 
-calculate_button = st.button("Calcular")
+# Checkbox SIEMPRE visible
+st.session_state.confirmed = st.checkbox(
+    "Confirmo que los datos ingresados son completos y correctos. "
+    "Entiendo que al continuar se consumirá mi acceso y no podrá recuperarse."
+)
 
+# Botón se deshabilita si no confirmó
+calculate_button = st.button(
+    "Calcular",
+    disabled=not st.session_state.confirmed
+)
+
+# =============================
+# ACCIÓN DE CÁLCULO
+# =============================
 if calculate_button:
-
-    if st.session_state.get("used", False):
-        st.error("Este acceso ya fue utilizado.")
-        st.stop()
-
-    confirm = st.checkbox(
-        "Confirmo que los datos ingresados son completos y correctos. Entiendo que al continuar se consumirá mi acceso y no podrá recuperarse."
-    )
-
-    if not confirm:
-        st.warning("Debes confirmar antes de continuar.")
-        st.stop()
 
     r = requests.post(
         CONSUME_URL,
@@ -59,10 +73,15 @@ if calculate_button:
         st.error("Token inválido o ya utilizado.")
         st.stop()
 
+    # Bloqueo inmediato en frontend
     st.session_state.used = True
+    st.session_state.access_granted = False
 
     # === AQUÍ VA TU LÓGICA REAL ===
     result = income - expenses
 
     st.success("Cálculo completado")
     st.write("Resultado:", result)
+
+    # Cortar ejecución para evitar reruns útiles
+    st.stop()
