@@ -11,9 +11,9 @@ query_params = st.query_params
 token = query_params.get("token")
 
 # =============================
-# VALIDACIÓN INICIAL
+# VALIDACIÓN INICIAL (solo una vez)
 # =============================
-if "access_granted" not in st.session_state:
+if "initialized" not in st.session_state:
 
     if not token:
         st.error("Acceso no autorizado.")
@@ -25,18 +25,13 @@ if "access_granted" not in st.session_state:
         st.error("Token inválido o expirado.")
         st.stop()
 
-    st.session_state.access_granted = True
+    st.session_state.initialized = True
     st.session_state.token = token
     st.session_state.used = False
     st.session_state.confirmed = False
-    st.query_params.clear()
+    st.session_state.result = None
 
-# =============================
-# BLOQUEAR SI YA FUE USADO
-# =============================
-if st.session_state.used:
-    st.error("Este acceso ya fue utilizado y no puede volver a usarse.")
-    st.stop()
+    st.query_params.clear()
 
 # =============================
 # INTERFAZ
@@ -47,16 +42,19 @@ st.subheader("Ingrese sus datos")
 income = st.number_input("Ingreso anual", min_value=0.0, value=0.0)
 expenses = st.number_input("Gastos anuales", min_value=0.0, value=0.0)
 
-# Checkbox SIEMPRE visible
-st.session_state.confirmed = st.checkbox(
+# Confirmación siempre visible
+confirmed = st.checkbox(
     "Confirmo que los datos ingresados son completos y correctos. "
-    "Entiendo que al continuar se consumirá mi acceso y no podrá recuperarse."
+    "Entiendo que al continuar se consumirá mi acceso y no podrá recuperarse.",
+    disabled=st.session_state.used
 )
 
-# Botón se deshabilita si no confirmó
+# Botón se deshabilita si:
+# - No confirmó
+# - Ya fue usado
 calculate_button = st.button(
     "Calcular",
-    disabled=not st.session_state.confirmed
+    disabled=(not confirmed) or st.session_state.used
 )
 
 # =============================
@@ -71,17 +69,22 @@ if calculate_button:
 
     if r.status_code != 200 or not r.json().get("success"):
         st.error("Token inválido o ya utilizado.")
-        st.stop()
+    else:
+        # Marcar como usado en frontend
+        st.session_state.used = True
 
-    # Bloqueo inmediato en frontend
-    st.session_state.used = True
-    st.session_state.access_granted = False
+        # === TU LÓGICA REAL AQUÍ ===
+        st.session_state.result = income - expenses
 
-    # === AQUÍ VA TU LÓGICA REAL ===
-    result = income - expenses
-
+# =============================
+# MOSTRAR RESULTADO SI EXISTE
+# =============================
+if st.session_state.result is not None:
     st.success("Cálculo completado")
-    st.write("Resultado:", result)
+    st.write("Resultado:", st.session_state.result)
 
-    # Cortar ejecución para evitar reruns útiles
-    st.stop()
+# =============================
+# MENSAJE SI YA FUE USADO
+# =============================
+if st.session_state.used:
+    st.warning("Este acceso ya fue utilizado. El cálculo no puede volver a ejecutarse.")
