@@ -62,7 +62,7 @@ calculate_button = st.button(
 # =============================
 # ACCIÓN DE CÁLCULO
 # =============================
-if calculate_button:
+if calculate_button(type="primary"):
 
     r = requests.post(
         CONSUME_URL,
