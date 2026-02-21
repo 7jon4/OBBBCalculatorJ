@@ -1,108 +1,190 @@
+"""
+============================================================
+OBBB TAX CALCULATOR - STREAMLIT FRONTEND
+============================================================
+
+FUNCIONALIDADES:
+
+- Muestra planes si no hay token
+- Redirige a Stripe
+- Valida token con Cloudflare Worker
+- Muestra contador restante
+- Ejecuta lógica de cálculo
+- Consume token solo si cálculo válido
+- Muestra mensajes amigables
+============================================================
+"""
+
 import streamlit as st
 import requests
+from datetime import datetime
+
+# ============================================================
+# CONFIGURACIÓN
+# ============================================================
 
 WORKER_BASE = "https://obbb-tax-calculator.joncamacaro.workers.dev"
-VALIDATE_URL = f"{WORKER_BASE}/validate-token"
-CONSUME_URL = f"{WORKER_BASE}/consume-token"
 
-st.set_page_config(page_title="OBBB Tax Calculator", layout="centered")
+st.set_page_config(
+    page_title="OBBBT Tax Calculator",
+    layout="centered"
+)
+
+# ============================================================
+# FUNCIONES API
+# ============================================================
+
+def validate_token(token):
+    """
+    Llama al Worker para validar token.
+    No consume uso.
+    """
+    try:
+        r = requests.get(
+            f"{WORKER_BASE}/validate",
+            params={"token": token},
+            timeout=10
+        )
+        return r.json()
+    except:
+        return {"valid": False, "message": "Error de conexión con el servidor."}
+
+
+def consume_token(token):
+    """
+    Consume 1 uso si todo está correcto.
+    """
+    try:
+        r = requests.post(
+            f"{WORKER_BASE}/consume",
+            json={"token": token},
+            timeout=10
+        )
+        return r.json()
+    except:
+        return {"allowed": False, "message": "Error de conexión con el servidor."}
+
+
+def create_checkout(plan_type):
+    """
+    Crea sesión Stripe y devuelve URL de pago.
+    """
+    try:
+        r = requests.post(
+            f"{WORKER_BASE}/create-checkout-session",
+            json={"type": plan_type},
+            timeout=10
+        )
+        data = r.json()
+        return data.get("url")
+    except:
+        return None
+
+
+# ============================================================
+# DETECTAR TOKEN EN URL
+# ============================================================
 
 query_params = st.query_params
 token = query_params.get("token")
 
-# =============================
-# VALIDACIÓN INICIAL
-# =============================
-if "initialized" not in st.session_state:
+# ============================================================
+# SI NO HAY TOKEN → MOSTRAR PLANES
+# ============================================================
 
-    if not token:
-        st.error("Acceso no autorizado.")
-        st.stop()
+if not token:
 
-    r = requests.get(VALIDATE_URL, params={"token": token})
+    st.title("OBBBT Tax Calculator")
 
-    if r.status_code != 200:
-        st.error("Error de validación.")
-        st.stop()
+    st.subheader("Selecciona tu plan")
 
-    data = r.json()
+    col1, col2 = st.columns(2)
 
-    if not data.get("valid"):
-        st.error("Token inválido o expirado.")
-        st.stop()
+    with col1:
+        st.markdown("### Acceso Único")
+        st.write("1 cálculo válido por 6 meses.")
 
-    st.session_state.initialized = True
-    st.session_state.token = token
-    st.session_state.token_type = data.get("type")  # 👈 NUEVO
-    st.session_state.used = False
-    st.session_state.result = None
+        if st.button("Comprar Single"):
+            checkout_url = create_checkout("single")
+            if checkout_url:
+                st.markdown(f"[Ir a pagar]({checkout_url})")
+            else:
+                st.error("Error creando sesión de pago.")
 
-    st.query_params.clear()
+    with col2:
+        st.markdown("### Suscripción Mensual")
+        st.write("Hasta 100 cálculos por mes.")
 
-# =============================
-# INTERFAZ
-# =============================
-st.title("OBBB Tax Calculator")
-st.subheader("Ingrese sus datos")
+        if st.button("Suscribirse"):
+            checkout_url = create_checkout("sub")
+            if checkout_url:
+                st.markdown(f"[Ir a pagar]({checkout_url})")
+            else:
+                st.error("Error creando sesión de pago.")
 
-income = st.number_input("Ingreso anual", min_value=0.0, value=0.0)
-expenses = st.number_input("Gastos anuales", min_value=0.0, value=0.0)
+    st.stop()
 
-is_single = st.session_state.token_type == "single"
-is_sub = st.session_state.token_type == "sub"
+# ============================================================
+# VALIDAR TOKEN
+# ============================================================
 
-confirmed = True  # por defecto en subs no se requiere confirmación
+validation = validate_token(token)
 
-# =============================
-# SOLO PARA SINGLE
-# =============================
-if is_single:
+if not validation.get("valid"):
+    st.error(validation.get("message", "Acceso inválido."))
+    st.stop()
 
-    confirmed = st.checkbox(
-        "Confirmo que los datos ingresados son completos y correctos. "
-        "Entiendo que al continuar se consumirá mi acceso y no podrá recuperarse.",
-        disabled=st.session_state.used
-    )
+remaining = validation["remaining"]
+expires = datetime.fromtimestamp(validation["expires_at"] / 1000)
 
-# =============================
-# BOTÓN
-# =============================
-calculate_button = st.button(
-    "Calcular",
-    disabled=(
-        (is_single and not confirmed) or
-        (is_single and st.session_state.used)
-    )
+st.success("Acceso activo")
+st.info(f"Te quedan {remaining} usos disponibles.")
+st.caption(f"Válido hasta: {expires.strftime('%Y-%m-%d')} UTC")
+
+st.divider()
+
+# ============================================================
+# AQUÍ VA TU LÓGICA REAL
+# ============================================================
+
+st.subheader("Calculadora OBBBT")
+
+# EJEMPLO DE INPUT (REEMPLAZAR POR TU LÓGICA REAL)
+valor = st.number_input(
+    "Valor de ejemplo",
+    min_value=0.0
 )
 
-# =============================
-# ACCIÓN
-# =============================
-if calculate_button:
+if st.button("Calcular"):
 
-    if is_single:
-        r = requests.post(
-            CONSUME_URL,
-            json={"token": st.session_state.token}
-        )
+    # --------------------------------------------------------
+    # 1. VALIDACIÓN INTERNA DE TU LÓGICA
+    # --------------------------------------------------------
 
-        if r.status_code != 200 or not r.json().get("success"):
-            st.error("Token inválido o ya utilizado.")
-        else:
-            st.session_state.used = True
+    if valor <= 0:
+        st.error("El valor debe ser mayor que cero.")
+        st.stop()
 
-    # === TU LÓGICA REAL AQUÍ ===
-    st.session_state.result = income - expenses
+    # Aquí debe ir tu validación real del equipo de lógica
+    # Si algo falla, NO consumimos token
 
-# =============================
-# RESULTADO
-# =============================
-if st.session_state.result is not None:
-    st.success("Cálculo completado")
-    st.write("Resultado:", st.session_state.result)
+    # --------------------------------------------------------
+    # 2. CONSUMIR TOKEN SOLO SI TODO ES CORRECTO
+    # --------------------------------------------------------
 
-# =============================
-# MENSAJE POST-USO SOLO SINGLE
-# =============================
-if is_single and st.session_state.used:
-    st.warning("Este acceso ya fue utilizado. No puede volver a calcular.")
+    consumo = consume_token(token)
+
+    if not consumo.get("allowed"):
+        st.error(consumo.get("message", "No permitido."))
+        st.stop()
+
+    # --------------------------------------------------------
+    # 3. REALIZAR CÁLCULO
+    # --------------------------------------------------------
+
+    resultado = valor * 2  # Reemplazar por lógica real
+
+    st.success("Cálculo realizado correctamente.")
+    st.write("Resultado:", resultado)
+
+    st.info(f"Te quedan {consumo['remaining']} usos restantes.")
