@@ -541,11 +541,12 @@ def fmt_date(ts_ms: int) -> str:
     return datetime.fromtimestamp(ts_ms / 1000).strftime("%Y-%m-%d")
 
 def money_input(label, *, value=0.0, step=100.0, decimals=2, key=None, help=None,
-                lang="es", currency="$"):
+                lang="es", currency="$", disabled=False):
     col_in, col_prev = st.columns([1.5, 3])
     with col_in:
         num = st.number_input(label, min_value=0.0, value=value, step=step,
-                              format=f"%.{decimals}f", key=key, help=help)
+                              format=f"%.{decimals}f", key=key, help=help,
+                              disabled=disabled)
     with col_prev:
         st.metric(label=" ", value=f"{currency}0" if num == 0
                   else f"{currency}{fmt_num(num, currency='', decimals=decimals)}")
@@ -592,7 +593,7 @@ def _do_start_over():
     st.session_state.form_version = preserved.get("form_version", 0) + 1
 
 
-def show_nav_bar():
+def show_nav_bar(position="top"):
     """
     Plain Streamlit navigation bar placed at the bottom of the page.
     No JS, no CSS tricks. Shows reached steps + Start Over button.
@@ -604,11 +605,12 @@ def show_nav_bar():
     show_s3 = eligible and completed_step2
 
     st.markdown("---")
-    st.markdown(
-        f"<p style='margin-bottom:6px;font-size:13px;color:var(--secondary-text-color);'>"
-        f"<b>{t['nav_label']}</b></p>",
-        unsafe_allow_html=True,
-    )
+    if position == "top":
+        st.markdown(
+            f"<p style='margin-bottom:6px;font-size:13px;color:var(--secondary-text-color);'>"
+            f"<b>{t['nav_label']}</b></p>",
+            unsafe_allow_html=True,
+        )
 
     num_step_btns = 1 + (1 if show_s2 else 0) + (1 if show_s3 else 0)
     col_widths = [1] * num_step_btns + [1, 3]  # start-over + spacer
@@ -616,27 +618,46 @@ def show_nav_bar():
     idx = 0
 
     with cols[idx]:
-        if st.button(t["nav_step1"], key="nav_btn_1", use_container_width=True):
+        if st.button(
+            t["nav_step1"],
+            key=f"nav_{position}_btn_1",
+            use_container_width=True,
+            disabled=(st.session_state.active_step == 1),
+        ):
             st.session_state.active_step = 1
             st.rerun()
     idx += 1
 
     if show_s2:
         with cols[idx]:
-            if st.button(t["nav_step2"], key="nav_btn_2", use_container_width=True):
+            if st.button(
+                t["nav_step2"],
+                key=f"nav_{position}_btn_2",
+                use_container_width=True,
+                disabled=(st.session_state.active_step == 2),
+            ):
                 st.session_state.active_step = 2
                 st.rerun()
         idx += 1
 
     if show_s3:
         with cols[idx]:
-            if st.button(t["nav_step3"], key="nav_btn_3", use_container_width=True):
+            if st.button(
+                t["nav_step3"],
+                key=f"nav_{position}_btn_3",
+                use_container_width=True,
+                disabled=(st.session_state.active_step == 3),
+            ):
                 st.session_state.active_step = 3
                 st.rerun()
         idx += 1
 
     with cols[idx]:
-        if st.button(t["nav_start_over"], key="nav_btn_start_over", use_container_width=True):
+        if st.button(
+            t["nav_start_over"],
+            key=f"nav_{position}_btn_start_over",
+            use_container_width=True,
+        ):
             _do_start_over()
             st.rerun()
 
@@ -658,6 +679,18 @@ def _clear_results_state():
     st.session_state.show_results = False
     st.session_state.results      = None
     st.session_state.pdf_bytes    = None
+
+
+def _radio_index(saved_key, options):
+    saved = st.session_state.get(saved_key)
+    if saved is None:
+        return None
+    if isinstance(saved, int) and 0 <= saved < len(options):
+        return saved
+    try:
+        return options.index(saved)
+    except ValueError:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -843,7 +876,7 @@ st.warning(t["disclaimer"])
 # ─────────────────────────────────────────────────────────────
 # NAVIGATION BAR — shown above Step 1
 # ─────────────────────────────────────────────────────────────
-show_nav_bar()
+show_nav_bar(position="top")
 
 # ─────────────────────────────────────────────────────────────
 # STEP 1 — ELIGIBILITY
@@ -855,21 +888,40 @@ step1_expanded = (active_step == 1)
 
 with st.expander(f"{t['step1_title']}", expanded=step1_expanded):
     if active_step != 1 and eligible:
-        st.success(f"{t['eligible_blocked_info']}\n\n{_step1_summary_text(t)}")
+        st.success(t["eligible_blocked_info"])
+        filing_status = st.radio(
+            t["filing_status_label"], t["filing_status_options"],
+            index=_radio_index("input_filing_val", t["filing_status_options"]),
+            horizontal=True, key=f"w_filing_locked_{st.session_state.form_version}",
+            disabled=True,
+        )
+        over_40 = st.radio(
+            t["over_40_label"], t["answer_options"],
+            index=_radio_index("input_over40_val", t["answer_options"]),
+            horizontal=True, help=t["over_40_help"], key=f"w_over40_locked_{st.session_state.form_version}",
+            disabled=True,
+        )
+        ot_1_5x = st.radio(
+            t["ot_1_5x_label"], t["answer_options"],
+            index=_radio_index("input_ot15x_val", t["answer_options"]),
+            horizontal=True, help=t["ot_1_5x_help"], key=f"w_ot15x_locked_{st.session_state.form_version}",
+            disabled=True,
+        )
+        ss_check = st.radio(
+            t["ss_check_label"], t["answer_options"],
+            index=_radio_index("input_ss_val", t["answer_options"]),
+            horizontal=True, help=t["ss_check_help"], key=f"w_ss_locked_{st.session_state.form_version}",
+            disabled=True,
+        )
+        itin_check = st.radio(
+            t["itin_check_label"], t["answer_options"],
+            index=_radio_index("input_itin_val", t["answer_options"]),
+            horizontal=True, help=t["itin_check_help"], key=f"w_itin_locked_{st.session_state.form_version}",
+            disabled=True,
+        )
         st.caption(t["edit_hint"])
     else:
         st.info(t["step1_info"])
-
-        def _radio_index(saved_key, options):
-            saved = st.session_state.get(saved_key)
-            if saved is None:
-                return None
-            if isinstance(saved, int) and 0 <= saved < len(options):
-                return saved
-            try:
-                return options.index(saved)
-            except ValueError:
-                return None
 
         filing_status = st.radio(
             t["filing_status_label"], t["filing_status_options"],
@@ -957,15 +1009,19 @@ with st.expander(f"{t['step1_title']}", expanded=step1_expanded):
 # STEP 2 — INCOME
 # ─────────────────────────────────────────────────────────────
 if not eligible:
+    show_nav_bar(position="bottom")
     st.stop()
 
 step2_expanded = (active_step == 2)
 
 with st.expander(f"{t['step2_title']}", expanded=step2_expanded):
     if active_step != 2 and st.session_state.completed_step_2:
-        st.success(
-            f"{t['step2_completed_msg']}\n\n**{t['step2_summary_prefix']}** "
-            f"{fmt_num(st.session_state.input_total_income or 0, lang)}"
+        st.success(t["step2_completed_msg"])
+        money_input(
+            t["magi_label"],
+            value=st.session_state.input_total_income,
+            step=1000.0, lang=lang, key=f"w_total_income_locked_{st.session_state.form_version}",
+            disabled=True,
         )
         st.caption(t["edit_hint"])
     else:
@@ -990,6 +1046,7 @@ with st.expander(f"{t['step2_title']}", expanded=step2_expanded):
             st.success(t["step2_completed_msg"])
 
 if not st.session_state.completed_step_2:
+    show_nav_bar(position="bottom")
     st.stop()
 
 # ─────────────────────────────────────────────────────────────
@@ -1019,6 +1076,7 @@ with st.expander(f"{t['step3_title']}", expanded=step3_expanded):
 
     if not method_choice:
         st.warning(t["warning_no_method_chosen"])
+        show_nav_bar(position="bottom")
         st.stop()
 
     if method_choice == t["choose_method_options"][0]:
@@ -1251,6 +1309,8 @@ else:
 # ─────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────
+show_nav_bar(position="bottom")
+
 if not st.session_state.show_results:
     st.stop()
 
